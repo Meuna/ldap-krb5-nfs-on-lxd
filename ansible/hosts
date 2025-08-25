@@ -1,0 +1,11 @@
+[kdc]
+krb5.knfs.local
+
+[kadmin]
+krb5.knfs.local
+
+[nfs]
+nfs.knfs.local
+
+[client]
+client.knfs.local

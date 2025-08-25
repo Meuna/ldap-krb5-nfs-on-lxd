@@ -1,0 +1,5 @@
+---
+domain: knfs.local
+realm: '{{ domain | upper }}'
+kdc_servers: krb5.{{ domain }}
+kadmin_servers: krb5.{{ domain }}

@@ -1,0 +1,29 @@
+---
+- name: preseed Kerberos installation
+  ansible.builtin.debconf:
+    name: krb5-config
+    question: krb5-config/{{ item.key }}
+    value: '{{ item.value }}'
+    vtype: string
+  loop:
+    - { key: default_realm, value: '{{ realm }}' }
+    - { key: kerberos_servers, value: '{{ kdc_servers }}' }
+    - { key: admin_server, value: '{{ kadmin_servers }}' }
+
+- name: install krb5-user and sssd-krb5
+  ansible.builtin.package:
+    name:
+      - krb5-user
+      - sssd-krb5
+    state: present
+
+- name: create sssd.conf file
+  ansible.builtin.template:
+    src: sssd.conf.j2
+    dest: /etc/sssd/sssd.conf
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: start sssd
+  ansible.builtin.service: name=sssd state=started

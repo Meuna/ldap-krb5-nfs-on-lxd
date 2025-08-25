@@ -1,0 +1,19 @@
+---
+- hosts: kdc
+  become: true
+
+  roles:
+    - kdc
+
+- hosts: kadmin
+  become: true
+
+  roles:
+    - kadmin
+
+- hosts: client
+  become: true
+
+  roles:
+    - kclient
+
