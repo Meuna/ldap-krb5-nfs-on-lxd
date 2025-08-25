@@ -1,5 +1,6 @@
 ---
 mainpw: easypass
+servicepw: easypass
 domain: knfs.local
 ldap_suffix: 'dc={{ domain | split(".") | join(",dc=") }}'
 realm: '{{ domain | upper }}'

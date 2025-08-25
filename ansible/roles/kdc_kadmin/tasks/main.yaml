@@ -1,0 +1,176 @@
+---
+- name: preseed Kerberos installation
+  ansible.builtin.debconf:
+    name: krb5-config
+    question: krb5-config/{{ item.key }}
+    value: '{{ item.value }}'
+    vtype: string
+  loop:
+    - { key: default_realm, value: '{{ realm }}' }
+    - { key: kerberos_servers, value: '{{ kdc_servers }}' }
+    - { key: admin_server, value: '{{ kadmin_servers }}' }
+
+- name: install krb5-kdc
+  ansible.builtin.package:
+    name:
+      - krb5-kdc-ldap
+      - krb5-admin-server
+      - schema2ldif
+    state: present
+
+- name: extract Kerberos LDAP schema
+  ansible.builtin.shell: 
+    cmd: gunzip -c /usr/share/doc/krb5-kdc-ldap/kerberos.schema.gz > /etc/ldap/schema/kerberos.schema
+    creates: /etc/ldap/schema/kerberos.schema
+
+- name: import Kerberos schema
+  ansible.builtin.command: ldap-schema-manager -i kerberos.schema
+  register: kdb5_util_result
+  changed_when: kdb5_util_result.stdout is not search('kerberos already exists in the LDAP')
+
+- name: add an index on {1}mdb,cn=config
+  ansible.builtin.command:
+    cmd: ldapmodify -Q -Y EXTERNAL -H ldapi:///
+    stdin: |
+      dn: olcDatabase={1}mdb,cn=config
+      add: olcDbIndex
+      olcDbIndex: krbPrincipalName eq,pres,sub
+  register: ldapmodify_result
+  failed_when:
+    - ldapmodify_result is failed
+    - ldapmodify_result.stderr is not search('Type or value exists')
+  changed_when: ldapmodify_result is succeeded
+
+- name: generate hashed password
+  ansible.builtin.command: slappasswd -h {SSHA} -s {{ servicepw }}
+  register: slappasswd_result
+  changed_when: no
+
+- name: add an entry to allow kdc to contact LDAP
+  ansible.builtin.command:
+    cmd: ldapadd -x -D cn=admin,{{ ldap_suffix }} -w {{ mainpw }}
+    stdin: |+
+      dn: uid={{ item }},{{ ldap_suffix }}
+      uid: {{ item }}
+      objectClass: account
+      objectClass: simpleSecurityObject
+      userPassword: {{ slappasswd_result.stdout | trim }}
+      description: Account used for the Kerberos KDC
+  register: ldapadd_result
+  failed_when:
+    - ldapadd_result is failed
+    - ldapadd_result.stderr is not search('Already exists')
+  changed_when: ldapadd_result is succeeded
+  loop:
+    - kdc-service
+    - kadmin-service
+
+- name: add Kerberos attributes ACL
+  ansible.builtin.command:
+    cmd: ldapmodify -Q -Y EXTERNAL -H ldapi:///
+    stdin: |
+      dn: olcDatabase={1}mdb,cn=config
+      add: olcAccess
+      olcAccess: {2}to attrs=krbPrincipalKey
+        by anonymous auth
+        by dn.exact="uid=kdc-service,{{ ldap_suffix }}" read
+        by dn.exact="uid=kadmin-service,{{ ldap_suffix }}" write
+        by self write
+        by * none
+      -
+      add: olcAccess
+      olcAccess: {3}to dn.subtree="cn=krbContainer,{{ ldap_suffix }}"
+        by dn.exact="uid=kdc-service,{{ ldap_suffix }}" read
+        by dn.exact="uid=kadmin-service,{{ ldap_suffix }}" write
+        by * none
+      -
+      add: olcAccess
+      olcAccess: {4}to dn.subtree="ou=People,{{ ldap_suffix }}"
+        by dn.exact="uid=kdc-service,{{ ldap_suffix }}" read
+        by dn.exact="uid=kadmin-service,{{ ldap_suffix }}" write
+        by * break
+  register: ldapmodify_result
+  failed_when:
+    - ldapmodify_result is failed
+    - ldapmodify_result.stderr is not search('Type or value exists')
+  changed_when: ldapmodify_result is succeeded
+
+- name: finalise realm configuration
+  ansible.builtin.blockinfile:
+    path: /etc/krb5.conf
+    insertafter: 'admin_server = {{ kdc_servers }}'
+    block: |
+      default_domain = {{ domain }}
+      database_module = openldap_ldapconf
+    marker: '# {mark} Ansible realm block'
+  notify: restart krb5-kdc
+
+
+- name: configure ldap dbmodule
+  ansible.builtin.blockinfile:
+    path: /etc/krb5.conf
+    block: |
+      [dbdefaults]
+              ldap_kerberos_container_dn = cn=krbContainer,{{ ldap_suffix }}
+
+      [dbmodules]
+              openldap_ldapconf = {
+                      db_library = kldap
+
+              # if either of these is false, then the ldap_kdc_dn needs to
+              # have write access
+              disable_last_success = true
+              disable_lockout  = true
+
+                      # this object needs to have read rights on
+                      # the realm container, principal container and realm sub-trees
+                      ldap_kdc_dn = "uid=kdc-service,{{ ldap_suffix }}"
+
+                      # this object needs to have read and write rights on
+                      # the realm container, principal container and realm sub-trees
+                      ldap_kadmind_dn = "uid=kadmin-service,{{ ldap_suffix }}"
+
+                      ldap_service_password_file = /etc/krb5kdc/service.keyfile
+                      ldap_servers = ldapi:///
+                      ldap_conns_per_server = 5
+              }
+    marker: '# {mark} Ansible ldap dbmodule block'
+  notify: restart krb5-kdc
+
+- name: initialise realm
+  ansible.builtin.command: kdb5_ldap_util -D cn=admin,{{ ldap_suffix }} -w {{ mainpw }} -H ldapi:/// -r {{ realm }} create -subtrees {{ ldap_suffix }} -s -P "{{ mainpw }}"
+  register: kdb5_ldap_utilresult
+  failed_when:
+    - kdb5_ldap_utilresult is failed
+    - kdb5_ldap_utilresult.stderr is not search('Already exists while creating realm')
+  changed_when: kdb5_ldap_utilresult is succeeded
+
+- name: Convert servicepw to hex
+  ansible.builtin.shell: "echo -n '{{ servicepw }}' | od -An -tx1 | tr -d ' \n'"
+  register: servicepw_hex
+  changed_when: false
+
+- name: manually stash service password into service.keyfile
+  ansible.builtin.copy:
+    content: |
+      uid=kdc-service,{{ ldap_suffix }}#{HEX}{{ servicepw_hex.stdout }}
+      uid=kadmin-service,{{ ldap_suffix }}#{HEX}{{ servicepw_hex.stdout }}
+    dest: /etc/krb5kdc/service.keyfile
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: configure */admin@{{ realm }}
+  ansible.builtin.lineinfile:
+    dest: /etc/krb5kdc/kadm5.acl
+    line: '*/admin@{{ realm }} *'
+    mode: '600'
+    state: present
+    create: true
+  notify: restart krb5-admin-server
+
+- name: start krb5-kdc
+  ansible.builtin.service: name=krb5-kdc state=started
+
+- name: start krb5-admin-server
+  ansible.builtin.service: name=krb5-admin-server state=started

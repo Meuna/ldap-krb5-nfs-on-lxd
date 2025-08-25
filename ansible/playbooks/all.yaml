@@ -5,21 +5,15 @@
   roles:
     - ldap_server
 
-- hosts: kdc
+- hosts: kdc_kadmin
   become: true
 
   roles:
-    - kdc
+    - kdc_kadmin
 
-- hosts: kadmin
-  become: true
+# - hosts: client
+#   become: true
 
-  roles:
-    - kadmin
-
-- hosts: client
-  become: true
-
-  roles:
-    - kclient
+#   roles:
+#     - kclient
 

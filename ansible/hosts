@@ -1,10 +1,7 @@
 [ldap_server]
 krb5.knfs.local
 
-[kdc]
-krb5.knfs.local
-
-[kadmin]
+[kdc_kadmin]
 krb5.knfs.local
 
 [nfs]
