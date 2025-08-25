@@ -1,0 +1,35 @@
+#cloud-config
+
+# Install necessary packages
+packages:
+  - openssh
+  - python312
+
+# Create the ansible user
+users:
+  - name: ansible
+    gecos: Ansible User
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    groups: users, wheel
+    ssh_authorized_keys:
+      - ${ssh_pub}
+
+
+# Enable and start the SSH service
+runcmd:
+  - apt-get remove unattended-upgrades
+  - systemctl enable --now sshd
+
+  # Make sure PermitRootLogin is no and PasswordAuthentication is off
+  - sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+  - sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+
+  # Explicitly allow the ansible user
+  - echo "AllowUsers ansible" >> /etc/ssh/sshd_config.d/01.ansible.conf
+
+  # Restart SSH to apply config changes
+  - systemctl restart sshd
+
+# Optional: final message
+final_message: "Cloud-init complete. SSH ready for ansible user."
