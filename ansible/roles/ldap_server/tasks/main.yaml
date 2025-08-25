@@ -1,0 +1,110 @@
+---
+- name: preseed slapd installation
+  ansible.builtin.debconf:
+    name: slapd
+    question: slapd/{{ item.key }}
+    value: '{{ item.value }}'
+    vtype: string
+  loop:
+    - { key: password1, value: '{{ mainpw }}' }
+    - { key: password2, value: '{{ mainpw }}' }
+    - { key: domain, value: '{{ domain }}' }
+
+- name: install ldap packages
+  ansible.builtin.package:
+    name:
+      - slapd
+      - ldap-utils
+      - ldapscripts
+    state: present
+
+- name: create TLS private key
+  community.crypto.openssl_privatekey:
+    path: /etc/ldap/key.pem
+    mode: '0600'
+    owner: openldap
+    group: openldap
+  notify: restart slapd
+
+- name: create certificate signing request
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: /etc/ldap/key.pem
+    common_name: '{{ ldap_server }}'
+    subject_alt_name: DNS:{{ ldap_server }}
+  register: csr
+  changed_when: no
+
+- name: create self-signed certificate from CSR
+  community.crypto.x509_certificate:
+    path: /etc/ldap/cert.pem
+    csr_content: "{{ csr.csr }}"
+    privatekey_path: /etc/ldap/key.pem
+    provider: selfsigned
+    mode: '0644'
+    owner: openldap
+    group: openldap
+  notify: restart slapd
+
+- name: configure slapd with the TLS certificate
+  ansible.builtin.command:
+    cmd: ldapmodify -Y EXTERNAL -H ldapi:///
+    stdin: |
+      dn: cn=config
+      add: olcTLSCertificateFile
+      olcTLSCertificateFile: /etc/ldap/cert.pem
+      -
+      add: olcTLSCertificateKeyFile
+      olcTLSCertificateKeyFile: /etc/ldap/key.pem
+  register: ldapmodify_result
+  failed_when:
+    - ldapmodify_result is failed
+    - ldapmodify_result.stderr is not search('Type or value exists')
+  changed_when: ldapmodify_result is succeeded
+  notify: restart slapd
+
+- name: activate ldaps protocol
+  ansible.builtin.lineinfile:
+    dest: /etc/default/slapd
+    line: SLAPD_SERVICES="ldap:/// ldaps:/// ldapi:///"
+    regexp: '^SLAPD_SERVICES='
+    state: present
+  notify: restart slapd
+
+- name: create ldapscripts.conf file
+  ansible.builtin.lineinfile:
+    dest: /etc/ldapscripts/ldapscripts.conf
+    line: '{{ item.key }}="{{ item.value }}"'
+    regexp: '^#?{{ item.key }}='
+    state: present
+  loop:
+    - { key: SERVER, value: '{{ ldap_uri }}' }
+    - { key: BINDDN, value: 'cn=admin,{{ ldap_suffix }}' }
+    - { key: BINDPWDFILE, value: /etc/ldapscripts/ldapscripts.passwd }
+    - { key: SUFFIX, value: '{{ ldap_suffix }}' }
+    - { key: GSUFFIX, value: ou=Groups }
+    - { key: USUFFIX, value: ou=People }
+    - { key: MSUFFIX, value: ou=Computers }
+
+- name: create /ldapscripts.passwd file
+  ansible.builtin.copy:
+    content: '{{ mainpw }}'
+    dest: /etc/ldapscripts/ldapscripts.passwd
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: configure users and group ou
+  ansible.builtin.command:
+    cmd: ldapadd -x -D cn=admin,{{ ldap_suffix }} -w {{ mainpw }}
+    stdin: |+
+      dn: ou={{ item }},{{ ldap_suffix }}
+      objectClass: organizationalUnit
+      ou: {{ item }}
+  register: ldapadd_result
+  failed_when:
+    - ldapadd_result is failed
+    - ldapadd_result.stderr is not search('Already exists')
+  changed_when: ldapadd_result is succeeded
+  loop:
+    - People
+    - Groups

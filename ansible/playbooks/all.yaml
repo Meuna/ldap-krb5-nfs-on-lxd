@@ -1,4 +1,10 @@
 ---
+- hosts: ldap_server
+  become: true
+
+  roles:
+    - ldap_server
+
 - hosts: kdc
   become: true
 

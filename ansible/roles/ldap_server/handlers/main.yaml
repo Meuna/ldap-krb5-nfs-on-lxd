@@ -1,0 +1,3 @@
+---
+- name: restart slapd
+  ansible.builtin.service: name=slapd state=restarted

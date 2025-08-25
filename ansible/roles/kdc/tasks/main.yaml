@@ -16,7 +16,7 @@
     state: present
 
 - name: initialise realm
-  ansible.builtin.command: kdb5_util create -s -P "supersecretpassword"
+  ansible.builtin.command: kdb5_util create -s -P "{{ mainpw }}"
   register: kdb5_util_result
   failed_when:
     - kdb5_util_result is failed

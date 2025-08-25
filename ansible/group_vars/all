@@ -1,5 +1,9 @@
 ---
+mainpw: easypass
 domain: knfs.local
+ldap_suffix: 'dc={{ domain | split(".") | join(",dc=") }}'
 realm: '{{ domain | upper }}'
+ldap_server: krb5.{{ domain }}
+ldap_uri: ldaps://{{ ldap_server }}
 kdc_servers: krb5.{{ domain }}
 kadmin_servers: krb5.{{ domain }}
