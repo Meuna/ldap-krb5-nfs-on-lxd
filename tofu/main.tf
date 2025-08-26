@@ -16,7 +16,7 @@ variable "ssh_pub_path" {
 }
 
 resource "lxd_project" "knfs" {
-  name        = "krb5-nfs"
+  name        = "ldap-krb5-nfs"
   description = "DNS, Kerberos5 and NFS PoC"
   config = {
     "features.storage.volumes" = true
@@ -28,7 +28,7 @@ resource "lxd_project" "knfs" {
 }
 
 resource "lxd_network" "knfs" {
-  name = "krb5-nfs"
+  name = "ldap-krb5-nfs"
 
   config = {
     "ipv4.nat"     = "true"
@@ -39,13 +39,13 @@ resource "lxd_network" "knfs" {
 
 resource "lxd_storage_pool" "knfs" {
   project = lxd_project.knfs.name
-  name    = "krb5-nfs"
+  name    = "ldap-krb5-nfs"
   driver  = "dir"
 }
 
 resource "lxd_profile" "knfs" {
   project = lxd_project.knfs.name
-  name    = "krb5-nfs"
+  name    = "ldap-krb5-nfs"
 
   device {
     name = "eth0"
