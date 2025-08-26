@@ -4,7 +4,7 @@ krb5.knfs.local
 [kdc_kadmin]
 krb5.knfs.local
 
-[nfs]
+[nfs_server]
 nfs.knfs.local
 
 [client]

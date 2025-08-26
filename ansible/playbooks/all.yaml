@@ -11,9 +11,16 @@
   roles:
     - kdc_kadmin
 
+- hosts: nfs_server
+  become: true
+
+  roles:
+    - nfs_server
+
 - hosts: client
   become: true
 
   roles:
     - auth_client
+    - nfs_client
 

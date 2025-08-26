@@ -174,3 +174,8 @@
 
 - name: start krb5-admin-server
   ansible.builtin.service: name=krb5-admin-server state=started
+
+- name: create admin/admin principal
+  ansible.builtin.command: kadmin.local -q "addprinc -pw {{ mainpw }} {{ kadmin_princ }}"
+  register: kadmin_result
+  changed_when: kadmin_result.stderr is not search('Principal or policy already exists')

@@ -1,0 +1,23 @@
+---
+- name: create nfs principal
+  ansible.builtin.command: kadmin -p {{ kadmin_princ }} -w {{ mainpw }} -q "addprinc -randkey nfs/{{ nfs_server }}"
+  register: kadmin_result
+  changed_when: kadmin_result.stderr is not search('Principal or policy already exists')
+
+- name: check if keytab is already created
+  ansible.builtin.command: klist -k
+  register: klist_result
+  changed_when: no
+  failed_when:
+    - klist_result is failed
+    - klist_result.stderr is not search('not found while starting keytab scan')
+
+- name: create keytab for nfs/{{ nfs_server }}
+  ansible.builtin.command: kadmin -p {{ kadmin_princ }} -w {{ mainpw }} -q "ktadd nfs/{{ nfs_server }}"
+  changed_when: yes
+  when: klist_result is failed or klist_result.stdout is not search('nfs/' + nfs_server)
+
+- name: install nfs packages
+  ansible.builtin.package:
+    name: nfs-kernel-server
+    state: present
