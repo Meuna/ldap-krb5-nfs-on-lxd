@@ -8,6 +8,4 @@ krb5.knfs.local
 nfs.knfs.local
 
 [client]
-krb5.knfs.local
-nfs.knfs.local
 client.knfs.local

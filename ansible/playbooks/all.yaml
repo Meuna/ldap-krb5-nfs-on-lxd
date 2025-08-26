@@ -15,6 +15,7 @@
   become: true
 
   roles:
+    - auth_client
     - nfs_server
 
 - hosts: client
