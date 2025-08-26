@@ -18,7 +18,7 @@ users:
 
 # Enable and start the SSH service
 runcmd:
-  - apt-get remove unattended-upgrades
+  - apt-get remove -y unattended-upgrades
   - systemctl enable --now sshd
 
   # Make sure PermitRootLogin is no and PasswordAuthentication is off
