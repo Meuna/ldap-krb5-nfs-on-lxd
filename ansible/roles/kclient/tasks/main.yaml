@@ -10,11 +10,16 @@
     - { key: kerberos_servers, value: '{{ kdc_servers }}' }
     - { key: admin_server, value: '{{ kadmin_servers }}' }
 
-- name: install krb5-user and sssd-krb5
+- name: install krb5 and openldap clients
   ansible.builtin.package:
     name:
       - krb5-user
+      - ldap-utils
+      - sssd
       - sssd-krb5
+      - sssd-ldap
+      - libpam-sss
+      - libnss-sss
     state: present
 
 - name: create sssd.conf file
@@ -24,6 +29,18 @@
     owner: root
     group: root
     mode: '0600'
+  notify: restart sssd
+
+- name: configure nsswitch.conf
+  ansible.builtin.lineinfile:
+    dest: /etc/nsswitch.conf
+    line: '{{ item.key }}: {{ item.value }}'
+    regexp: '^#?{{ item.key }}:'
+    state: present
+  loop:
+    - { key: passwd, value: 'files systemd sss' }
+    - { key: group, value: 'files systemd sss' }
+    - { key: shadow, value: 'files systemd sss' }
 
 - name: start sssd
   ansible.builtin.service: name=sssd state=started

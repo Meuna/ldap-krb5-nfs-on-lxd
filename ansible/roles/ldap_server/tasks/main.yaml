@@ -85,7 +85,7 @@
     - { key: USUFFIX, value: ou=People }
     - { key: MSUFFIX, value: ou=Computers }
 
-- name: create /ldapscripts.passwd file
+- name: create ldapscripts.passwd file
   ansible.builtin.copy:
     content: '{{ mainpw }}'
     dest: /etc/ldapscripts/ldapscripts.passwd

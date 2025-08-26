@@ -11,9 +11,9 @@
   roles:
     - kdc_kadmin
 
-# - hosts: client
-#   become: true
+- hosts: client
+  become: true
 
-#   roles:
-#     - kclient
+  roles:
+    - kclient
 
