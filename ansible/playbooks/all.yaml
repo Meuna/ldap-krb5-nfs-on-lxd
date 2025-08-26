@@ -15,5 +15,5 @@
   become: true
 
   roles:
-    - kclient
+    - auth_client
 
