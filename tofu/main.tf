@@ -17,7 +17,7 @@ variable "ssh_pub_path" {
 
 resource "lxd_project" "knfs" {
   name        = "ldap-krb5-nfs"
-  description = "DNS, Kerberos5 and NFS PoC"
+  description = "LDAP, Kerberos5 and NFS PoC"
   config = {
     "features.storage.volumes" = true
     "features.images"          = false
