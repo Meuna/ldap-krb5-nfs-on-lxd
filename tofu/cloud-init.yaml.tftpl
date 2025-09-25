@@ -2,8 +2,8 @@
 
 # Install necessary packages
 packages:
-  - openssh
-  - python312
+  - openssh-server
+  - python3.12
 
 # Create the ansible user
 users:
@@ -19,7 +19,7 @@ users:
 # Enable and start the SSH service
 runcmd:
   - apt-get remove -y unattended-upgrades
-  - systemctl enable --now sshd
+  - systemctl enable --now ssh
 
   # Make sure PermitRootLogin is no and PasswordAuthentication is off
   - sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
@@ -29,7 +29,7 @@ runcmd:
   - echo "AllowUsers ansible" >> /etc/ssh/sshd_config.d/01.ansible.conf
 
   # Restart SSH to apply config changes
-  - systemctl restart sshd
+  - systemctl restart ssh
 
 # Optional: final message
 final_message: "Cloud-init complete. SSH ready for ansible user."
