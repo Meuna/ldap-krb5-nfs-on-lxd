@@ -16,7 +16,7 @@ $ tofu init
 $ tofu apply
 ```
 
-Resolve the `knfs5.local` domain with the LXD DNS server
+Resolve the `knfs.local` domain with the LXD DNS server
 
 ```console
 $ cd ..
@@ -95,7 +95,6 @@ password prompt.
 
 ```console
 <user>@client:/ ls -l <mount folder>
-Password:
 <user>@client:/ klist
 Ticket cache: FILE:/tmp/krb5cc_10000_q5UoXp
 Default principal: <user>@KNFS.LOCAL
