@@ -1,0 +1,82 @@
+---
+- name: write schema on the ldap_server
+  ansible.builtin.copy:
+    content: '{{ kerberos_schema | b64decode }}'
+    dest: /etc/ldap/schema/kerberos.schema.gz
+
+- name: extract Kerberos LDAP schema
+  ansible.builtin.shell: 
+    cmd: gunzip -c /etc/ldap/schema/kerberos.schema.gz > /etc/ldap/schema/kerberos.schema
+    creates: /etc/ldap/schema/kerberos.schema
+
+- name: import Kerberos schema
+  ansible.builtin.command: ldap-schema-manager -i kerberos.schema
+  register: command_result
+  changed_when: command_result.stdout is not search('kerberos already exists in the LDAP')
+
+- name: add an index on {1}mdb,cn=config
+  ansible.builtin.command:
+    cmd: ldapmodify -Q -Y EXTERNAL -H ldapi:///
+    stdin: |
+      dn: olcDatabase={1}mdb,cn=config
+      add: olcDbIndex
+      olcDbIndex: krbPrincipalName eq,pres,sub
+  register: ldapmodify_result
+  failed_when:
+    - ldapmodify_result is failed
+    - ldapmodify_result.stderr is not search('Type or value exists')
+  changed_when: ldapmodify_result is succeeded
+
+- name: generate hashed password
+  ansible.builtin.command: slappasswd -h {SSHA} -s {{ servicepw }}
+  register: slappasswd_result
+  changed_when: no
+
+- name: add an entry to allow kdc to contact LDAP
+  ansible.builtin.command:
+    cmd: ldapadd -x -D cn=admin,{{ ldap_suffix }} -w {{ mainpw }}
+    stdin: |+
+      dn: uid={{ item }},{{ ldap_suffix }}
+      uid: {{ item }}
+      objectClass: account
+      objectClass: simpleSecurityObject
+      userPassword: {{ slappasswd_result.stdout | trim }}
+      description: Account used for the Kerberos KDC
+  register: ldapadd_result
+  failed_when:
+    - ldapadd_result is failed
+    - ldapadd_result.stderr is not search('Already exists')
+  changed_when: ldapadd_result is succeeded
+  loop:
+    - kdc-service
+    - kadmin-service
+
+- name: add Kerberos attributes ACL
+  ansible.builtin.command:
+    cmd: ldapmodify -Q -Y EXTERNAL -H ldapi:///
+    stdin: |
+      dn: olcDatabase={1}mdb,cn=config
+      add: olcAccess
+      olcAccess: {2}to attrs=krbPrincipalKey
+        by anonymous auth
+        by dn.exact="uid=kdc-service,{{ ldap_suffix }}" read
+        by dn.exact="uid=kadmin-service,{{ ldap_suffix }}" write
+        by self write
+        by * none
+      -
+      add: olcAccess
+      olcAccess: {3}to dn.subtree="cn=krbContainer,{{ ldap_suffix }}"
+        by dn.exact="uid=kdc-service,{{ ldap_suffix }}" read
+        by dn.exact="uid=kadmin-service,{{ ldap_suffix }}" write
+        by * none
+      -
+      add: olcAccess
+      olcAccess: {4}to dn.subtree="ou=People,{{ ldap_suffix }}"
+        by dn.exact="uid=kdc-service,{{ ldap_suffix }}" read
+        by dn.exact="uid=kadmin-service,{{ ldap_suffix }}" write
+        by * break
+  register: ldapmodify_result
+  failed_when:
+    - ldapmodify_result is failed
+    - ldapmodify_result.stderr is not search('Type or value exists')
+  changed_when: ldapmodify_result is succeeded
