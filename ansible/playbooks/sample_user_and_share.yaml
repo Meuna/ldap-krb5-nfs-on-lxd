@@ -1,0 +1,81 @@
+---
+- hosts: ldap_server
+  become: true
+  environment:
+    LDAPTLS_REQCERT: never
+
+  tasks:
+    - name: walk existing ldap configuration
+      ansible.builtin.command: lsldap
+      register: lsldap_result
+      changed_when: no
+
+    - name: create testgroup group
+      ansible.builtin.command: ldapaddgroup testgroup
+      when: lsldap_result.stdout is not search('testgroup')
+
+    - name: create users
+      ansible.builtin.command: ldapadduser {{ item }} testgroup
+      when: lsldap_result.stdout is not search(item)
+      register: ldapadduser_result
+      loop:
+        - testuser
+        - testservice
+
+    - name: add Kerberos attributes
+      ansible.builtin.command: >-
+        kadmin -p {{ kadmin_princ }} -w {{ mainpw }} -q "addprinc -x dn=uid={{ item.item }},ou=People,{{ ldap_suffix }} -pw {{ mainpw }} {{ item.item }}"
+      when: item.changed
+      loop: '{{ ldapadduser_result.results }}'
+
+- hosts: nfs_server
+  become: true
+
+  tasks:
+    - name: create the /mnt/export share
+      ansible.builtin.file:
+        path: /mnt/export
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: add /mnt/export share in /etc/exports
+      ansible.builtin.lineinfile:
+        dest: /etc/exports
+        line: /mnt/export *(rw,sync,no_subtree_check,sec=krb5p)
+        state: present
+
+    - name: reload exports
+      ansible.builtin.command: exportfs -rav
+
+- hosts: client
+  become: true
+
+  tasks:
+    - name: check if keytab is already created
+      ansible.builtin.command: klist -kt /etc/testservice.keytab
+      register: klist_result
+      changed_when: no
+      failed_when:
+        - klist_result is failed
+        - klist_result.stderr is not search('not found while starting keytab scan')
+
+    - name: create keytab for testservice
+      ansible.builtin.command: kadmin -p {{ kadmin_princ }} -w {{ mainpw }} -q "ktadd -k /etc/testservice.keytab testservice"
+      changed_when: yes
+      when: klist_result is failed or klist_result.stdout is not search('testservice@' + realm)
+
+    - name: chown /etc/testservice.keytab to testservice
+      ansible.builtin.file:
+        path: /etc/testservice.keytab
+        owner: testservice
+        group: testgroup
+        mode: '0600'
+
+    - name: mount /mnt/export
+      ansible.posix.mount:
+        src: '{{ groups.nfs_server[0] }}:/mnt/export'
+        path: /mnt/export
+        state: mounted
+        fstype: nfs
