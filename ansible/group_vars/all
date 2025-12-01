@@ -10,3 +10,4 @@ kdc_servers: krb5.{{ domain }}
 kadmin_servers: krb5.{{ domain }}
 kadmin_princ: admin/admin
 nfs_server: nfs.{{ domain }}
+sample_share: /mnt/export

@@ -1,0 +1,3 @@
+---
+- name: restart kstart-service
+  ansible.builtin.service: name={{ kstart_service }} state=restarted

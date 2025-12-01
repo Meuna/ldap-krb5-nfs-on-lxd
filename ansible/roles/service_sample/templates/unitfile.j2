@@ -1,0 +1,13 @@
+[Unit]
+Description=Kerberos ticket for {{ service_name }}
+After=network-online.target
+
+[Service]
+Type=simple
+User={{ service_name }}
+Group={{ service_name }}
+ExecStart=/usr/bin/k5start -U -f {{ keytab_file }} -K 60 -l 24h
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

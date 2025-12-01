@@ -32,4 +32,4 @@
   roles:
     - auth_client
     - nfs_client
-
+    - service_sample

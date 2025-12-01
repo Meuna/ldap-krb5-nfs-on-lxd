@@ -1,0 +1,88 @@
+---
+- name: install kstart
+  ansible.builtin.package:
+    name:
+      - kstart
+      - docker.io
+    state: present
+
+- name: create service user and group on the ldap server
+  environment:
+    LDAPTLS_REQCERT: never
+  delegate_to: '{{ groups.ldap_server[0] }}'
+  block:
+    - name: walk existing ldap configuration
+      ansible.builtin.command: lsldap
+      register: lsldap_result
+      changed_when: no
+
+    - name: create {{ service_name }} group
+      ansible.builtin.command: ldapaddgroup {{ service_name }}
+      when: lsldap_result.stdout is not search(service_name)
+
+    - name: create {{ service_name }} user
+      ansible.builtin.command: ldapadduser {{ service_name }} {{ service_name }}
+      when: lsldap_result.stdout is not search(service_name)
+      register: ldapadduser_result
+
+    - name: add Kerberos attributes
+      ansible.builtin.command: >-
+        kadmin -p {{ kadmin_princ }} -w {{ mainpw }} -q "addprinc -randkey -x dn=uid={{ service_name }},ou=People,{{ ldap_suffix }} {{ service_name }}"
+      when: ldapadduser_result.changed
+
+- name: check if keytab is already created
+  ansible.builtin.command: klist -kt {{ keytab_file }}
+  register: klist_result
+  changed_when: no
+  failed_when:
+    - klist_result is failed
+    - klist_result.stderr is not search('not found while starting keytab scan')
+
+- name: create keytab for testservice
+  ansible.builtin.command: kadmin -p {{ kadmin_princ }} -w {{ mainpw }} -q "ktadd -k {{ keytab_file }} {{ service_name }}"
+  changed_when: yes
+  when: klist_result is failed or klist_result.stdout is not search(service_name + '@' + realm)
+  notify: restart kstart-service
+
+- name: chown {{ keytab_file }} to {{ service_name }}
+  ansible.builtin.file:
+    path: '{{ keytab_file }}'
+    owner: '{{ service_name }}'
+    group: '{{ service_name }}'
+    mode: '0600'
+
+- name: create {{ kstart_service }}.service unit file
+  ansible.builtin.template:
+    src: unitfile.j2
+    dest: /etc/systemd/system/{{ kstart_service }}.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart kstart-service
+
+- name: enable and start kstart service
+  ansible.builtin.service: name={{ kstart_service }} state=started enabled=yes
+
+- name: get uid of {{ service_name }} user
+  ansible.builtin.command: id -u {{ service_name }}
+  changed_when: no
+  register: id_user_result
+
+- name: get uid of {{ service_name }} user
+  ansible.builtin.command: id -g {{ service_name }}
+  changed_when: no
+  register: id_group_result
+
+- name: create a docker service using the NFS share
+  community.docker.docker_container:
+    name: '{{ service_name }}'
+    image: busybox:latest
+    command:
+      - watch
+      - '-n10'
+      - 'date >> {{ sample_share }}/service_log'
+    user: '{{ id_user_result.stdout }}:{{ id_group_result.stdout }}'
+    volumes:
+      - '{{ sample_share }}:{{ sample_share }}'
+    restart_policy: always
+    detach: yes

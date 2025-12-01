@@ -21,3 +21,10 @@
   ansible.builtin.package:
     name: nfs-common
     state: present
+
+- name: mount {{ sample_share }}
+  ansible.posix.mount:
+    src: '{{ groups.nfs_server[0] }}:{{ sample_share }}'
+    path: '{{ sample_share }}'
+    state: mounted
+    fstype: nfs

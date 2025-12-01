@@ -1,0 +1,4 @@
+---
+service_name: testservice
+kstart_service: kstart_{{ service_name }}
+keytab_file: /etc/{{ service_name }}.keytab

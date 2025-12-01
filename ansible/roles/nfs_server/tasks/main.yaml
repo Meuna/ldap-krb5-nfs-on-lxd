@@ -21,3 +21,20 @@
   ansible.builtin.package:
     name: nfs-kernel-server
     state: present
+
+- name: create the {{ sample_share }} share
+  ansible.builtin.file:
+    path: '{{ sample_share }}'
+    state: directory
+    mode: '0777'
+    owner: nobody
+    group: nogroup
+
+- name: add {{ sample_share }} share in /etc/exports
+  ansible.builtin.lineinfile:
+    dest: /etc/exports
+    line: '{{ sample_share }} *(rw,sync,no_subtree_check,sec=krb5p)'
+    state: present
+
+- name: reload exports
+  ansible.builtin.command: exportfs -rav
