@@ -28,3 +28,4 @@
     path: '{{ sample_share }}'
     state: mounted
     fstype: nfs
+    opts: rw,sec=krb5p,_netdev,x-systemd.automount,x-systemd.idle-timeout=1min
